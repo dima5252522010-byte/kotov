@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Покупка звёзд Telegram</title>
+    <style>
+        /* Стили для всего сайта */
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .container {
+            background-color: #2d2d2d;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            width: 100%;
+            max-width: 450px;
+        }
+
+        .admin-container { max-width: 800px; }
+
+        h1 { text-align: center; color: #ffd700; margin-top: 0; }
+
+        label { display: block; margin-top: 15px; font-size: 14px; color: #ccc; }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border-radius: 8px;
+            border: 1px solid #444;
+            background-color: #1a1a1a;
+            color: white;
+            box-sizing: border-box;
+        }
+
+        .total-price {
+            font-size: 20px;
+            text-align: center;
+            margin: 20px 0;
+            color: #ffd700;
+            font-weight: bold;
+        }
+
+        .payment-info {
+            background: #1a1a1a;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+
+        .card-number { font-size: 18px; color: #00ff00; }
+
+        button {
+            width: 100%;
+            padding: 15px;
+            background-color: #ffd700;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: 0.2s;
+        }
+
+        button:hover { background-color: #e6c200; }
+
+        .btn-done { background: #00ff00; padding: 10px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; margin-top: 10px; width: auto; }
+        .btn-logout { background: #ff4444; color: white; margin-top: 20px; }
+
+        #status-message { text-align: center; margin-top: 15px; font-weight: bold; }
+
+        /* Стили для админки */
+        .order-card { background: #1a1a1a; padding: 15px; margin-bottom: 15px; border-radius: 8px; border-left: 4px solid #ffd700; }
+        .order-card a { color: #00ff00; }
+        .order-card p { margin: 5px 0; }
+    </style>
+</head>
+<body>
+
+    <!-- БЛОК КЛИЕНТА (Витрина) -->
+    <div id="client-view" class="container">
+        <h1>⭐ Звёзды Telegram</h1>
+        
+        <div class="order-form">
+            <label>Ваш юзернейм в Telegram (без @):</label>
+            <input type="text" id="username" placeholder="username" required>
+
+            <label>Количество звёзд (мин. 50):</label>
+            <input type="number" id="stars" value="50" min="50" step="50" required>
+
+            <div class="total-price">К оплате: <span id="price">77.00</span> ₽</div>
+
+            <div class="payment-info">
+                <p>Переведите точную сумму на карту:</p>
+                <!-- ВПИШИ СВОИ ДАННЫЕ НИЖЕ -->
+                <p class="card-number"><b>0000 0000 0000 0000</b></p>
+                <p>Получатель: <b>Иван И.</b></p>
+                <p>Банк: <b>Сбербанк / Тинькофф</b></p>
+            </div>
+
+            <label>Ссылка на скриншот оплаты (загрузите на imgur.com или аналог):</label>
+            <input type="url" id="receipt" placeholder="https://..." required>
+
+            <button onclick="submitOrder()">Я оплатил, отправить заказ</button>
+            <p id="status-message"></p>
+        </div>
+    </div>
+
+    <!-- БЛОК АДМИНА (Скрыт по умолчанию) -->
+    <div id="admin-view" class="container admin-container" style="display: none;">
+        <h1>👑 Админ-панель</h1>
+        
+        <div id="auth-block">
+            <label>Введите пароль:</label>
+            <input type="password" id="admin-password" placeholder="Пароль">
+            <button onclick="login()">Войти</button>
+        </div>
+        
+        <div id="orders-block" style="display:none;">
+            <h2 style="color:#ffd700;">Заказы</h2>
+            <div id="orders-list"></div>
+            <button class="btn-logout" onclick="window.location.hash = ''; location.reload();">Выйти</button>
+        </div>
+    </div>
+
+    <!-- Скрипт с логикой и базой данных -->
+    <script type="module">
+        // ==========================================
+        // 1. СЮДА ВСТАВЬ СВОИ КЛЮЧИ ОТ FIREBASE
+        // ==========================================
+        const firebaseConfig = {
+            apiKey: "ТВОЙ_API_KEY",
+            authDomain: "ТВОЙ_PROJECT_ID.firebaseapp.com",
+            projectId: "ТВОЙ_PROJECT_ID",
+            storageBucket: "ТВОЙ_PROJECT_ID.appspot.com",
+            messagingSenderId: "ТВОЙ_SENDER_ID",
+            appId: "ТВОЙ_APP_ID"
+        };
+
+        // Импорты Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // ==========================================
+        // 2. НАСТРОЙКИ МАГАЗИНА
+        // ==========================================
+        const pricePerStar = 1.54; // Цена за 1 звезду
+        const ADMIN_PASSWORD = "admin123"; // ПАРОЛЬ ДЛЯ ВХОДА В АДМИНКУ (поменяй!)
+
+        // ==========================================
+        // 3. ЛОГИКА ПЕРЕКЛЮЧЕНИЯ СТРАНИЦ (Клиент / Админ)
+        // ==========================================
+        function checkRoute() {
+            const hash = window.location.hash;
+            if (hash === '#admin') {
+                document.getElementById('client-view').style.display = 'none';
+                document.getElementById('admin-view').style.display = 'block';
+            } else {
+                document.getElementById('client-view').style.display = 'block';
+                document.getElementById('admin-view').style.display = 'none';
+            }
+        }
+        
+        // Проверяем URL при загрузке страницы
+        window.addEventListener('load', checkRoute);
+        window.addEventListener('hashchange', checkRoute);
+
+        // ==========================================
+        // 4. ЛОГИКА ДЛЯ КЛИЕНТА
+        // ==========================================
+        document.getElementById('stars').addEventListener('input', (e) => {
+            const stars = e.target.value;
+            const total = (stars * pricePerStar).toFixed(2);
+            document.getElementById('price').innerText = total;
+        });
+
+        window.submitOrder = async function() {
+            const username = document.getElementById('username').value.trim();
+            const stars = document.getElementById('stars').value;
+            const receipt = document.getElementById('receipt').value.trim();
+            const statusMsg = document.getElementById('status-message');
+
+            if (!username || !stars || !receipt) {
+                statusMsg.style.color = 'red';
+                statusMsg.innerText = 'Пожалуйста, заполните все поля!';
+                return;
+            }
+
+            statusMsg.style.color = 'white';
+            statusMsg.innerText = 'Отправка заказа...';
+
+            try {
+                await addDoc(collection(db, "orders"), {
+                    username: username,
+                    stars: Number(stars),
+                    receipt: receipt,
+                    status: "Ожидает проверки",
+                    date: new Date().toISOString()
+                });
+                
+                statusMsg.style.color = 'lightgreen';
+                statusMsg.innerText = 'Заказ отправлен! Ожидайте проверки оплаты.';
+                
+                document.getElementById('username').value = '';
+                document.getElementById('receipt').value = '';
+                
+            } catch (e) {
+                console.error("Ошибка: ", e);
+                statusMsg.style.color = 'red';
+                statusMsg.innerText = 'Ошибка отправки. Попробуйте позже.';
+            }
+        };
+
+        // ==========================================
+        // 5. ЛОГИКА ДЛЯ АДМИНА
+        // ==========================================
+        window.login = function() {
+            const pass = document.getElementById('admin-password').value;
+            if (pass === ADMIN_PASSWORD) {
+                document.getElementById('auth-block').style.display = 'none';
+                document.getElementById('orders-block').style.display = 'block';
+                loadOrders();
+            } else {
+                alert("Неверный пароль!");
+            }
+        }
+
+        async function loadOrders() {
+            const list = document.getElementById('orders-list');
+            list.innerHTML = 'Загрузка...';
+            
+            try {
+                const querySnapshot = await getDocs(collection(db, "orders"));
+                list.innerHTML = '';
+                
+                if (querySnapshot.empty) {
+                    list.innerHTML = '<p>Заказов пока нет.</p>';
+                    return;
+                }
+
+                // Сортируем заказы по дате (сначала новые)
+                const orders = [];
+                querySnapshot.forEach((doc) => orders.push({ id: doc.id, ...doc.data() }));
+                orders.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                orders.forEach((data) => {
+                    const card = document.createElement('div');
+                    card.className = 'order-card';
+                    card.innerHTML = `
+                        <p><b>Юзер:</b> @${data.username}</p>
+                        <p><b>Звёзд:</b> ${data.stars}</p>
+                        <p><b>Чек:</b> <a href="${data.receipt}" target="_blank">Посмотреть скриншот</a></p>
+                        <p><b>Статус:</b> <span style="color: ${data.status === 'Выполнен' ? '#00ff00' : '#ffd700'}">${data.status}</span></p>
+                        <p><b>Дата:</b> ${new Date(data.date).toLocaleString('ru-RU')}</p>
+                    `;
+                    
+                    if (data.status !== 'Выполнен') {
+                        const btn = document.createElement('button');
+                        btn.className = 'btn-done';
+                        btn.innerText = 'Отметить как выполненный';
+                        btn.onclick = async () => {
+                            await updateDoc(doc(db, "orders", data.id), { status: "Выполнен" });
+                            loadOrders();
+                        };
+                        card.appendChild(btn);
+                    }
+                    
+                    list.appendChild(card);
+                });
+            } catch (e) {
+                console.error(e);
+                list.innerHTML = '<p style="color:red">Ошибка загрузки заказов. Проверьте ключи Firebase.</p>';
+            }
+        }
+    </script>
+</body>
+</html>
